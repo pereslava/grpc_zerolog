@@ -1,6 +1,8 @@
 package grpc_zerolog
 
-import "github.com/rs/zerolog"
+import (
+	"github.com/rs/zerolog"
+)
 
 var (
 	// DefaultPayloadDecider is the default implementation of payload decider
@@ -13,14 +15,14 @@ var (
 	DefaultPayloadLogLevel zerolog.Level = zerolog.DebugLevel
 
 	defaultPayloadOptions = &payloadOptions{
-		shouldLog: DefaultPayloadDecider,
+		decider: DefaultPayloadDecider,
 	}
 )
 
 // WithPayloadDecider customizes the function for deciding if the gRPC interceptor logs should log depends on fullMethodName
 func WithPayloadDecider(f PayloadDecider) PayloadOption {
 	return func(o *payloadOptions) {
-		o.shouldLog = f
+		o.decider = f
 	}
 }
 
@@ -38,8 +40,8 @@ type PayloadOption func(*payloadOptions)
 type PayloadDecider func(fullMethodName string) bool
 
 type payloadOptions struct {
-	shouldLog PayloadDecider
-	level     zerolog.Level
+	decider PayloadDecider
+	level   zerolog.Level
 }
 
 func evaluatePayloadOptions(opts []PayloadOption) *payloadOptions {
@@ -49,4 +51,18 @@ func evaluatePayloadOptions(opts []PayloadOption) *payloadOptions {
 		o(optCopy)
 	}
 	return optCopy
+}
+
+func (o *payloadOptions) shouldLog(method string) bool {
+	gl := zerolog.GlobalLevel()
+	switch {
+	case !o.decider(method):
+		return false
+	case gl == zerolog.NoLevel, o.level == zerolog.NoLevel:
+		return false
+	case o.level < gl:
+		return false
+	default:
+		return true
+	}
 }
