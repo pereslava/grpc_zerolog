@@ -12,17 +12,35 @@ var (
 	}
 
 	// DefaultPayloadLogLevel is the default log level of payload interceptors
-	DefaultPayloadLogLevel zerolog.Level = zerolog.DebugLevel
+	DefaultPayloadLogLevel zerolog.Level = zerolog.TraceLevel
+
+	// DefaultLogErrorsDecider is the default decider for logging errors, it returns true if error exist with WarnLevel
+	DefaultLogErrorsDecider LogErrorsDecider = func(fullMethodName string, err error) (bool, zerolog.Level) {
+		if err == nil {
+			return false, zerolog.NoLevel
+		}
+		return true, zerolog.WarnLevel
+	}
 
 	defaultPayloadOptions = &payloadOptions{
-		decider: DefaultPayloadDecider,
+		decider:         DefaultPayloadDecider,
+		shouldLogErrors: DefaultLogErrorsDecider,
+		level:           DefaultPayloadLogLevel,
 	}
 )
 
-// WithPayloadDecider customizes the function for deciding if the gRPC interceptor logs should log depends on fullMethodName
+// WithPayloadDecider customizes the function for deciding if the gRPC interceptor logs should log, depends on fullMethodName
 func WithPayloadDecider(f PayloadDecider) PayloadOption {
 	return func(o *payloadOptions) {
 		o.decider = f
+	}
+}
+
+// WithLogErrorsDecider customizes the function for deciding if the gRPC interceptor logs should log in error case
+// this decider will be executed if logging payload disabled by log level or by PayloadDecider
+func WithLogErrorsDecider(f LogErrorsDecider) PayloadOption {
+	return func(o *payloadOptions) {
+		o.shouldLogErrors = f
 	}
 }
 
@@ -39,9 +57,13 @@ type PayloadOption func(*payloadOptions)
 // PayloadDecider defines rules for suppressing payload interceptor logs
 type PayloadDecider func(fullMethodName string) bool
 
+// LogErrorsDecider defines rules for suppressing log payload in error case, also returns the log level for zerolog
+type LogErrorsDecider func(fullMethodName string, err error) (bool, zerolog.Level)
+
 type payloadOptions struct {
-	decider PayloadDecider
-	level   zerolog.Level
+	decider         PayloadDecider
+	shouldLogErrors LogErrorsDecider
+	level           zerolog.Level
 }
 
 func evaluatePayloadOptions(opts []PayloadOption) *payloadOptions {
